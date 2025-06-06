@@ -4,13 +4,13 @@ import { Agent } from "../models/agent";
 import {
   getAgents,
   getAgentDetail,
-  createAgentService,
   updateAgentService,
   deleteAgentService,
   generateAgentToken,
   registerAgentService,
   updateAgentStatusService,
   getAgentMetrics,
+  getLatestAgentMetrics,
 } from "../services/AgentService";
 
 const agents = new Hono<{
@@ -20,7 +20,7 @@ const agents = new Hono<{
 
 // 获取所有客户端
 agents.get("/", async (c) => {
-  const result = await getAgents(c.env.DB);
+  const result = await getAgents();
 
   return c.json(
     {
@@ -32,34 +32,13 @@ agents.get("/", async (c) => {
   );
 });
 
-// 创建新客户端
-agents.post("/", async (c) => {
-  const { name } = await c.req.json();
-  const payload = c.get("jwtPayload");
-
-  const result = await createAgentService(c.env.DB, c.env, name, payload.id);
-
-  return c.json(
-    {
-      success: result.success,
-      message: result.message,
-      agent: result.agent,
-    },
-    result.status as any
-  );
-});
-
 // 更新客户端信息
 agents.put("/:id", async (c) => {
   const agentId = Number(c.req.param("id"));
   const payload = c.get("jwtPayload");
   const updateData = await c.req.json();
 
-  const result = await updateAgentService(
-    c.env.DB,
-    agentId,
-    updateData
-  );
+  const result = await updateAgentService(c.env.DB, agentId, updateData);
 
   return c.json(
     {
@@ -73,21 +52,27 @@ agents.put("/:id", async (c) => {
 
 // 删除客户端
 agents.delete("/:id", async (c) => {
-  const agentId = Number(c.req.param("id"));
-  const payload = c.get("jwtPayload");
+  try {
+    const agentId = Number(c.req.param("id"));
 
-  const result = await deleteAgentService(
-    c.env.DB,
-    agentId
-  );
+    await deleteAgentService(agentId);
 
-  return c.json(
-    {
-      success: result.success,
-      message: result.message,
-    },
-    result.status as any
-  );
+    return c.json(
+      {
+        success: true,
+        message: "客户端已删除",
+      },
+      200
+    );
+  } catch (error) {
+    return c.json(
+      {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
+  }
 });
 
 // 生成客户端Token
@@ -107,18 +92,9 @@ agents.post("/token/generate", async (c) => {
 
 // 客户端自注册接口
 agents.post("/register", async (c) => {
-  const { token, name, hostname, ip_addresses, os, version } =
-    await c.req.json();
-
-  console.log("token", token);
-  console.log("name", name);
-  console.log("hostname", hostname);
-  console.log("ip_addresses", ip_addresses);
-  console.log("os", os);
-  console.log("version", version);
+  const { token, name, hostname, ip_addresses, os, version } = await c.req.json();
 
   const result = await registerAgentService(
-    c.env.DB,
     c.env,
     token,
     name || "New Agent",
@@ -143,46 +119,71 @@ agents.post("/status", async (c) => {
   // 获取客户端发送的所有数据并打印日志
   const statusData = await c.req.json();
 
-  const result = await updateAgentStatusService(c.env.DB, c.env, statusData);
+  console.log("statusData: ", statusData);
 
-  return c.json(
-    {
-      success: result.success,
-      message: result.message,
-    },
-    result.status as any
-  );
+  try {
+    await updateAgentStatusService(statusData);
+    return c.json(
+      {
+        success: true,
+        message: "客户端状态已更新",
+      },
+      200
+    );
+  } catch (error) {
+    return c.json(
+      {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
+  }
 });
 
 // 获取单个客户端的指标
 agents.get("/:id/metrics", async (c) => {
   const agentId = Number(c.req.param("id"));
-  const result = await getAgentMetrics(c.env.DB, agentId);
+  const result = await getAgentMetrics(agentId);
   return c.json(
     {
-      success: result.success,
-      agent: result.results,
+      success: true,
+      agent: result,
       message: "获取客户端指标成功",
     },
     200
-  )
-})
+  );
+});
+
+// 获取单个客户端的最新指标
+agents.get("/:id/metrics/latest", async (c) => {
+  const agentId = Number(c.req.param("id"));
+  const result = await getLatestAgentMetrics(agentId);
+  return c.json(
+    {
+      success: true,
+      agent: result,
+      message: "获取客户端最新指标成功",
+    },
+    200
+  );
+});
 
 // 获取单个客户端
 agents.get("/:id", async (c) => {
   const agentId = Number(c.req.param("id"));
 
-  const result = await getAgentDetail(c.env.DB, agentId);
+  const result = await getAgentDetail(agentId);
+
+  console.log("result: ", result);
 
   return c.json(
     {
-      success: result.success,
-      agent: result.agent,
-      message: result.message,
+      success: true,
+      agent: result,
     },
-    result.status as any
+    200
   );
 });
-
 
 export { agents };
